@@ -3,6 +3,8 @@ esphome:
   name: $devicename
   platform: ESP32
   board: nodemcu-32s
+  platformio_options:
+    board_build.partitions: huge_app.csv
   build_path: build/test4
 
 substitutions:
@@ -685,3 +687,12 @@ prometheus:
     ha_hello_world:
       id: hellow_world
       name: Hello World
+
+hid:
+  - platform: ble_keyboard
+    id: ble_hid
+
+keyboard:
+  - platform: hid
+    name: Keyboard
+    hid_id: ble_hid

@@ -3,7 +3,10 @@
 namespace esphome {
 namespace hid {
 
-class HIDDevice {};
+class HIDDevice {
+ public:
+  virtual ~HIDDevice() {}
+};
 
 }  // namespace hid
 }  // namespace esphome
