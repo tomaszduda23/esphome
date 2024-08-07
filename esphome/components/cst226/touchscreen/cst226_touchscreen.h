@@ -24,7 +24,7 @@ class CST226Touchscreen : public touchscreen::Touchscreen, public i2c::I2CDevice
   bool can_proceed() override { return this->setup_complete_ || this->is_failed(); }
 
  protected:
-  bool read16_(uint16_t addr, uint8_t *data, size_t len) {
+  bool read16_(uint16_t addr, const uint8_t *data, size_t len) {
     if (this->read_register16(addr, data, len) != i2c::ERROR_OK) {
       esph_log_e(TAG, "Read data from 0x%04X failed", addr);
       this->mark_failed();
