@@ -1,0 +1,119 @@
+#include "zigbee_binary_sensor.h"
+#include "esphome/core/log.h"
+extern "C" {
+#include <zboss_api.h>
+#include <zboss_api_addons.h>
+#include <zb_nrf_platform.h>
+#include <zigbee/zigbee_app_utils.h>
+#include <zb_error_to_string.h>
+}
+namespace esphome {
+namespace zigbee {
+
+static const char *const TAG = "zigbee.binary_sensor";
+
+#define HA_ONOFF_SWITCH_ENDPOINT 11
+
+#define BULB_INIT_BASIC_LOCATION_DESC "TODO"
+#define BULB_INIT_BASIC_PH_ENV ZB_ZCL_BASIC_ENV_UNSPECIFIED
+#define BULB_INIT_BASIC_MODEL_ID "TODO"
+#define BULB_INIT_BASIC_DATE_CODE "20200329"
+#define BULB_INIT_BASIC_APP_VERSION 00
+#define BULB_INIT_BASIC_HW_VERSION 00
+#define BULB_INIT_BASIC_STACK_VERSION 00
+#define BULB_INIT_BASIC_MANUF_NAME "esphome"
+
+/* light switch device cluster attributes */
+typedef struct {
+  zb_zcl_basic_attrs_ext_t basic_attr;
+  zb_zcl_identify_attrs_t identify_attr;
+  zb_zcl_on_off_attrs_t on_off_attr;
+} switch_device_ctx_t;
+
+static switch_device_ctx_t esp_switch_ctx;
+
+/******************* Declare attributes ************************/
+
+/* basic cluster attributes data */
+ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST_EXT(basic_attr_list, &esp_switch_ctx.basic_attr.zcl_version,
+                                     &esp_switch_ctx.basic_attr.app_version, &esp_switch_ctx.basic_attr.stack_version,
+                                     &esp_switch_ctx.basic_attr.hw_version, esp_switch_ctx.basic_attr.mf_name,
+                                     esp_switch_ctx.basic_attr.model_id, esp_switch_ctx.basic_attr.date_code,
+                                     &esp_switch_ctx.basic_attr.power_source, esp_switch_ctx.basic_attr.location_id,
+                                     &esp_switch_ctx.basic_attr.ph_env, esp_switch_ctx.basic_attr.sw_ver);
+
+/* identify cluster attributes data */
+ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &esp_switch_ctx.identify_attr.identify_time);
+
+/* switch config cluster attributes data */
+zb_uint8_t attr_switch_type = ZB_ZCL_ON_OFF_SWITCH_CONFIGURATION_SWITCH_TYPE_TOGGLE;
+zb_uint8_t attr_switch_actions = ZB_ZCL_ON_OFF_SWITCH_CONFIGURATION_SWITCH_ACTIONS_DEFAULT_VALUE;
+
+ZB_ZCL_DECLARE_ON_OFF_SWITCH_CONFIGURATION_ATTRIB_LIST(switch_cfg_attr_list, &attr_switch_type, &attr_switch_actions);
+
+/********************* Declare device **************************/
+
+ZB_HA_DECLARE_ON_OFF_SWITCH_CLUSTER_LIST(on_off_switch_clusters, switch_cfg_attr_list, basic_attr_list,
+                                         identify_attr_list);
+
+ZB_HA_DECLARE_ON_OFF_SWITCH_EP(on_off_switch_ep, HA_ONOFF_SWITCH_ENDPOINT, on_off_switch_clusters);
+
+ZB_HA_DECLARE_ON_OFF_SWITCH_CTX(on_off_switch_ctx, on_off_switch_ep);
+
+void ZigbeeBinarySensor::setup() {
+  esp_switch_ctx.basic_attr.zcl_version = ZB_ZCL_VERSION;
+  esp_switch_ctx.basic_attr.app_version = BULB_INIT_BASIC_APP_VERSION;
+  esp_switch_ctx.basic_attr.stack_version = BULB_INIT_BASIC_STACK_VERSION;
+  esp_switch_ctx.basic_attr.hw_version = BULB_INIT_BASIC_HW_VERSION;
+
+  ZB_ZCL_SET_STRING_VAL(esp_switch_ctx.basic_attr.mf_name, BULB_INIT_BASIC_MANUF_NAME,
+                        ZB_ZCL_STRING_CONST_SIZE(BULB_INIT_BASIC_MANUF_NAME));
+
+  ZB_ZCL_SET_STRING_VAL(esp_switch_ctx.basic_attr.model_id, BULB_INIT_BASIC_MODEL_ID,
+                        ZB_ZCL_STRING_CONST_SIZE(BULB_INIT_BASIC_MODEL_ID));
+
+  ZB_ZCL_SET_STRING_VAL(esp_switch_ctx.basic_attr.date_code, BULB_INIT_BASIC_DATE_CODE,
+                        ZB_ZCL_STRING_CONST_SIZE(BULB_INIT_BASIC_DATE_CODE));
+
+  esp_switch_ctx.basic_attr.power_source = ZB_ZCL_BASIC_POWER_SOURCE_DC_SOURCE;
+
+  ZB_ZCL_SET_STRING_VAL(esp_switch_ctx.basic_attr.location_id, BULB_INIT_BASIC_LOCATION_DESC,
+                        ZB_ZCL_STRING_CONST_SIZE(BULB_INIT_BASIC_LOCATION_DESC));
+
+  esp_switch_ctx.basic_attr.ph_env = BULB_INIT_BASIC_PH_ENV;
+
+  esp_switch_ctx.basic_attr.zcl_version = ZB_ZCL_VERSION;
+  esp_switch_ctx.basic_attr.power_source = ZB_ZCL_BASIC_POWER_SOURCE_UNKNOWN;
+
+  esp_switch_ctx.identify_attr.identify_time = 0;
+  esp_switch_ctx.on_off_attr.on_off = 1;
+
+  ZB_AF_REGISTER_DEVICE_CTX(&on_off_switch_ctx);
+
+  ZB_ZCL_SET_ATTRIBUTE(HA_ONOFF_SWITCH_ENDPOINT, ZB_ZCL_CLUSTER_ID_ON_OFF, ZB_ZCL_CLUSTER_CLIENT_ROLE,
+                       ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID, (zb_uint8_t *) &esp_switch_ctx.on_off_attr.on_off, ZB_FALSE);
+
+  zigbee_enable();
+
+  if (!this->publish_initial_state_)
+    return;
+
+  if (this->f_ != nullptr) {
+    this->publish_initial_state(this->f_().value_or(false));
+  } else {
+    this->publish_initial_state(false);
+  }
+}
+void ZigbeeBinarySensor::loop() {
+  if (this->f_ == nullptr)
+    return;
+
+  auto s = this->f_();
+  if (s.has_value()) {
+    this->publish_state(*s);
+  }
+}
+void ZigbeeBinarySensor::dump_config() { LOG_BINARY_SENSOR("", "Zigbee Binary Sensor", this); }
+
+}  // namespace zigbee
+}  // namespace esphome
