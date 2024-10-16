@@ -7,7 +7,6 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-#include <limits>
 
 #include "esphome/core/optional.h"
 
@@ -546,7 +545,6 @@ class Mutex {
  public:
   Mutex();
   Mutex(const Mutex &) = delete;
-  ~Mutex();
   void lock();
   bool try_lock();
   void unlock();
@@ -556,8 +554,6 @@ class Mutex {
  private:
 #if defined(USE_ESP32) || defined(USE_LIBRETINY)
   SemaphoreHandle_t handle_;
-#else
-  void *handle_; // d-pointer to store private data on new platforms
 #endif
 };
 
