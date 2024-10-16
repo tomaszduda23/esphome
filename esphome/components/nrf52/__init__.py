@@ -1,5 +1,6 @@
 import esphome.codegen as cg
-from esphome.components.zephyr import zephyr_set_core_data, zephyr_to_code, copy_files
+from esphome.components.zephyr import zephyr_set_core_data, zephyr_to_code
+from esphome.components.zephyr import copy_files as zephyr_copy_files
 from esphome.components.zephyr.const import (
     BOOTLOADER_MCUBOOT,
     KEY_BOOTLOADER,
@@ -73,7 +74,7 @@ CONFIG_SCHEMA = cv.All(
 )
 
 def copy_files():
-    zephyr.copy_files()
+    zephyr_copy_files()
 
 @coroutine_with_priority(1000)
 async def to_code(config):
