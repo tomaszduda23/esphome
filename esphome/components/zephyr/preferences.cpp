@@ -3,6 +3,7 @@
 #include "esphome/core/preferences.h"
 #include "esphome/core/log.h"
 #include <zephyr/settings/settings.h>
+#include <inttypes.h>
 
 namespace esphome {
 namespace zephyr {
