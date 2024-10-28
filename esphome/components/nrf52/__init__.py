@@ -26,6 +26,8 @@ from .gpio import nrf52_pin_to_code  # noqa
 
 CODEOWNERS = ["@tomaszduda23"]
 AUTO_LOAD = ["zephyr"]
+IS_TARGET_PLATFORM = True
+
 PLATFORM_NRF52 = 'nrf52'
 
 def set_core_data(config):
