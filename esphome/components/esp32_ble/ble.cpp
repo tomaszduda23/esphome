@@ -389,6 +389,9 @@ void ESP32BLE::dump_config() {
         break;
     }
     ESP_LOGCONFIG(TAG, "ESP32 BLE:");
+    if (this->is_failed()) {
+      ESP_LOGE(TAG, "  Marked Failed");
+    }
     ESP_LOGCONFIG(TAG, "  MAC address: %02X:%02X:%02X:%02X:%02X:%02X", mac_address[0], mac_address[1], mac_address[2],
                   mac_address[3], mac_address[4], mac_address[5]);
     ESP_LOGCONFIG(TAG, "  IO Capability: %s", io_capability_s);

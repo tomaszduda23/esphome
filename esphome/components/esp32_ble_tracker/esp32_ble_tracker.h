@@ -242,10 +242,10 @@ class ESP32BLETracker : public Component,
   uint32_t scan_duration_;
   uint32_t scan_interval_;
   uint32_t scan_window_;
-  uint8_t scan_start_fail_count_;
+  uint8_t scan_start_fail_count_{0};
   bool scan_continuous_;
   bool scan_active_;
-  bool scanner_idle_;
+  bool scanner_idle_{true};
   bool ble_was_disabled_{true};
   bool raw_advertisements_{false};
   bool parse_advertisements_{false};
