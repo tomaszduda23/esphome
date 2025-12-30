@@ -1,4 +1,0 @@
-packages:
-  common: !include common.yaml
-
-wifi: !remove

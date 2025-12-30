@@ -1,9 +1,0 @@
-substitutions:
-  network_enable_ipv6: "false"
-
-wifi:
-  ssid: MySSID
-  password: password1
-
-network:
-  enable_ipv6: ${network_enable_ipv6}
