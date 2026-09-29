@@ -794,7 +794,8 @@ _PCH_CMAKE_LINES = [
     "set(esphome_kept_options)",
     "set(esphome_pch_headers)",
     "foreach(option IN LISTS esphome_options)",
-    '  if(option MATCHES "imacros> (.+)$")',
+    # Zephyr 4.4+ wraps each option in a per-language $<...> expression
+    '  if(option MATCHES "imacros> ([^>]+)>?$")',
     '    list(APPEND esphome_pch_headers "${CMAKE_MATCH_1}")',
     "    list(APPEND esphome_kept_options",
     '        "$<$<NOT:$<AND:$<COMPILE_LANGUAGE:CXX>,$<STREQUAL:$<TARGET_PROPERTY:NAME>,app>>>:${option}>")',
@@ -802,6 +803,7 @@ _PCH_CMAKE_LINES = [
     '    list(APPEND esphome_kept_options "${option}")',
     "  endif()",
     "endforeach()",
+    "list(REMOVE_DUPLICATES esphome_pch_headers)",
     "if(NOT esphome_pch_headers)",
     '  message(FATAL_ERROR "ESPHome: the headers Zephyr forces were not found, so "',
     '      "the precompiled header would not load (set ESPHOME_PCH_ENABLE=0)")',
