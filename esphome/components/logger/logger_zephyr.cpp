@@ -8,7 +8,12 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/usb/usb_device.h>
+// Zephyr < 3.7 generates version.h without the zephyr/ prefix
+#if __has_include(<zephyr/version.h>)
 #include <zephyr/version.h>
+#else
+#include <version.h>
+#endif
 #ifdef USE_LOGGER_EARLY_MESSAGE
 #include <esphome/components/zephyr/reset_reason.h>
 #endif
