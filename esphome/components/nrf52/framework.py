@@ -464,6 +464,24 @@ def _install_lock(name: str) -> Iterator[None]:
         lock.release()
 
 
+def _install_locked(name: str) -> bool:
+    """Whether another build currently holds the install lock for name."""
+    from filelock import FileLock, Timeout
+
+    lock_path = get_sdk_nrf_tools_path() / f"{name}.lock"
+    if not lock_path.is_file():
+        return False
+    lock = FileLock(str(lock_path), fallback_to_soft=False)
+    try:
+        lock.acquire(timeout=0)
+    except Timeout:
+        return True
+    except OSError:
+        return False
+    lock.release()
+    return False
+
+
 def _fetch_missing_west_projects(
     env_python_path: Path, framework_path: Path, version: str, projects: set[str]
 ) -> None:
@@ -646,6 +664,11 @@ def _install_toolchain() -> None:
         # TOOLCHAIN_VERSION's orphans; the SDK archives are hundreds of MB.
         # A locked file must not discard the just-completed install.
         for leftover in toolchains_dir.parent.glob("*.archive.part*"):
+            # "<version>.<slug>.archive.part..."; keep another version's
+            # download while a parallel build is installing it
+            other = leftover.name.split(".archive.part")[0].rsplit(".", 1)[0]
+            if other != toolchain_version and _install_locked(f"toolchain-{other}"):
+                continue
             try:
                 leftover.unlink()
             except OSError as err:

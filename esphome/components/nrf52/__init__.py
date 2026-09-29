@@ -494,8 +494,9 @@ def get_download_types(storage_json: StorageJSON) -> list[dict[str, str]]:
     types = []
     UF2_PATH = "zephyr/zephyr.uf2"
     DFU_PATH = "firmware.zip"
-    HEX_PATH = "zephyr/zephyr.hex"  # SDK 2.6.1, only generated when OTA is disabled
-    HEX_MERGED_PATH = "zephyr/merged.hex"  # SDK 2.9.2, always generated
+    # SDK 2.6.1 only generates it when OTA is disabled; SDK 3.4.0+ always does
+    HEX_PATH = "zephyr/zephyr.hex"
+    HEX_MERGED_PATH = "zephyr/merged.hex"  # SDK 2.9.2 to 3.3.x, always generated
     APP_IMAGE_PATH = "zephyr/app_update.bin"
     build_dir = Path(storage_json.firmware_bin_path).parent
     if (build_dir / UF2_PATH).is_file():
@@ -1009,11 +1010,12 @@ def run_compile(args, config: ConfigType) -> bool:
         _copy_if_exists(west_out / "zephyr.hex", zephyr_dir / "zephyr.hex")
         _copy_if_exists(build_dir / "merged.hex", zephyr_dir / "merged.hex")
 
-    # For Adafruit bootloader builds, regenerate the UF2 from a hex file.
-    # merged.hex carries the correct flash addresses; SDK 3.4.0+ no longer
-    # generates it, so fall back to zephyr.hex.
-    hex_file = zephyr_dir / "merged.hex"
-    if not hex_file.is_file():
+    # For Adafruit bootloader builds, regenerate the UF2 from a hex file with
+    # the correct flash addresses. SDK 3.4.0+ no longer generates merged.hex;
+    # older versions must not silently fall back to the bare app hex.
+    if framework_ver < cv.Version(3, 4, 0):
+        hex_file = zephyr_dir / "merged.hex"
+    else:
         hex_file = zephyr_dir / "zephyr.hex"
     if bootloader in _UF2_FAMILY_IDS and hex_file.is_file():
         # Drop the build's own wrong-offset UF2 so it isn't shipped alongside.

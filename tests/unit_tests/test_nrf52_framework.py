@@ -865,6 +865,32 @@ class TestCheckAndInstall:
         _, toolchain_extract_dir = extract_calls[1].args[:2]
         assert toolchain_extract_dir == toolchain_dir / "gnu" / "arm-zephyr-eabi"
 
+    def test_prune_keeps_a_download_another_build_is_installing(
+        self,
+        nrf52_dirs: SimpleNamespace,
+        mock_nrf52_ops: SimpleNamespace,
+    ) -> None:
+        """Leftover downloads are removed, except those of another toolchain
+        version whose install lock is held by a parallel build."""
+        from filelock import FileLock
+
+        _mark_venv_ready(nrf52_dirs.python_env)
+        (nrf52_dirs.framework / ".ready").touch()
+        toolchains = nrf52_dirs.toolchain.parent
+        own = toolchains / f"{TOOLCHAIN_VERSION}.toolchain.archive.part"
+        orphan = toolchains / "0.16.0.toolchain.archive.part"
+        busy = toolchains / "1.0.1.minimal.archive.part.1"
+        for leftover in (own, orphan, busy):
+            leftover.touch()
+
+        lock = FileLock(str(get_sdk_nrf_tools_path() / "toolchain-1.0.1.lock"))
+        with lock:
+            check_and_install()
+
+        assert not own.exists()
+        assert not orphan.exists()
+        assert busy.exists()
+
 
 # ---------------------------------------------------------------------------
 # setup_platformio_python_env tests
