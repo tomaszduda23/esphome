@@ -17,6 +17,7 @@ from esphome.components.zephyr import (
     zephyr_add_pm_static,
     zephyr_add_prj_conf,
     zephyr_data,
+    zephyr_is_nrf54l,
     zephyr_set_core_data,
     zephyr_setup_preferences,
     zephyr_to_code,
@@ -74,6 +75,7 @@ from .framework import (
     check_and_install,
     get_build_env,
     get_build_paths,
+    include_west_project,
     setup_platformio_python_env,
     toolchain_tool,
 )
@@ -377,6 +379,11 @@ async def to_code(config: ConfigType) -> None:
     zephyr_setup_preferences()
     zephyr_to_code(config)
 
+    if zephyr_is_nrf54l():
+        # The entropy driver uses the CRACEN PSA crypto driver from nrf_security
+        include_west_project("mbedtls")
+        include_west_project("oberon-psa-crypto")
+
     if dfu_config := config.get(CONF_DFU):
         CORE.add_job(_dfu_to_code, dfu_config)
     framework_ver: cv.Version = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
@@ -419,6 +426,15 @@ async def to_code(config: ConfigType) -> None:
     # watchdog
     zephyr_add_prj_conf("WATCHDOG", True)
     zephyr_add_prj_conf("WDT_DISABLE_AT_BOOT", False)
+    if zephyr_is_nrf54l():
+        # nRF54L boards alias watchdog0 to wdt31, which is disabled by default
+        zephyr_add_overlay(
+            """
+                &wdt31 {
+                    status = "okay";
+                };
+            """
+        )
     # use NFC pins as GPIO
     if framework_ver < cv.Version(2, 9, 2):
         zephyr_add_prj_conf("NFCT_PINS_AS_GPIOS", True)

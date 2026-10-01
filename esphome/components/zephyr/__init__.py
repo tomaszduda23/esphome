@@ -13,6 +13,7 @@ from esphome.writer import clean_cmake_cache
 
 from .const import (
     CONF_CDC_ACM,
+    KEY_BOARD,
     KEY_BOOTLOADER,
     KEY_EXTRA_BUILD_FILES,
     KEY_KCONFIG,
@@ -100,6 +101,13 @@ def zephyr_set_core_data(config: ConfigType) -> None:
 
 def zephyr_data() -> ZephyrData:
     return CORE.data[KEY_ZEPHYR]
+
+
+def zephyr_is_nrf54l() -> bool:
+    """Return True if the board targets an nRF54L series SoC (e.g. nrf54l15dk/nrf54l15/cpuapp)."""
+    return any(
+        part.startswith("nrf54l") for part in zephyr_data()[KEY_BOARD].split("/")
+    )
 
 
 def zephyr_add_prj_conf(

@@ -66,7 +66,11 @@ void Logger::pre_setup() {
     static const struct device *uart_dev = nullptr;
     switch (this->uart_) {
       case UART_SELECTION_UART0:  // NOLINT(bugprone-branch-clone)
+#if DT_NODE_EXISTS(DT_NODELABEL(uart0))
         uart_dev = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(uart0));
+#elif DT_HAS_CHOSEN(zephyr_console)  // e.g. nRF54L has no uart0, use the board console UART
+        uart_dev = DEVICE_DT_GET_OR_NULL(DT_CHOSEN(zephyr_console));
+#endif
         break;
       case UART_SELECTION_UART1:
         uart_dev = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(uart1));
