@@ -30,11 +30,12 @@ from esphome.components.libretiny.const import (
     COMPONENT_LN882X,
     COMPONENT_RTL87XX,
 )
+from esphome.components.nrf52 import get_nrf52_variant
+from esphome.components.nrf52.const import VARIANT_NRF52, VARIANT_NRF54L
 from esphome.components.zephyr import (
     zephyr_add_cdc_acm,
     zephyr_add_overlay,
     zephyr_add_prj_conf,
-    zephyr_is_nrf54l,
 )
 from esphome.config_helpers import filter_source_files_from_platform
 import esphome.config_validation as cv
@@ -141,9 +142,11 @@ UART_SELECTION_LIBRETINY = {
 
 UART_SELECTION_RP2040 = [USB_CDC, UART0, UART1]
 
-UART_SELECTION_NRF52 = [USB_CDC, UART0]
 # nRF54L has no USB; UART0 maps to the board's zephyr,console UART
-UART_SELECTION_NRF54L = [UART0]
+UART_SELECTION_NRF52 = {
+    VARIANT_NRF52: [USB_CDC, UART0],
+    VARIANT_NRF54L: [UART0],
+}
 
 HARDWARE_UART_TO_UART_SELECTION = {
     UART0: logger_ns.UART_SELECTION_UART0,
@@ -192,9 +195,7 @@ def uart_selection(value: Any) -> str:
     if CORE.is_host:
         raise cv.Invalid("Uart selection not valid for host platform")
     if CORE.is_nrf52:
-        if zephyr_is_nrf54l():
-            return cv.one_of(*UART_SELECTION_NRF54L, upper=True)(value)
-        return cv.one_of(*UART_SELECTION_NRF52, upper=True)(value)
+        return cv.one_of(*UART_SELECTION_NRF52[get_nrf52_variant()], upper=True)(value)
     raise NotImplementedError
 
 
@@ -240,12 +241,6 @@ def warn_ram_log_strings(config: ConfigType) -> ConfigType:
     return config
 
 
-def set_nrf54l_default_uart(config: ConfigType) -> ConfigType:
-    if CORE.is_nrf52 and zephyr_is_nrf54l() and CONF_HARDWARE_UART not in config:
-        return {**config, CONF_HARDWARE_UART: UART0}
-    return config
-
-
 def validate_wait_for_cdc(config: ConfigType) -> ConfigType:
     if config.get(CONF_WAIT_FOR_CDC) and config.get(CONF_HARDWARE_UART) != USB_CDC:
         raise cv.Invalid("wait_for_cdc requires hardware_uart: USB_CDC")
@@ -260,7 +255,6 @@ LoggerMessageTrigger = logger_ns.class_(
 
 
 CONFIG_SCHEMA = cv.All(
-    set_nrf54l_default_uart,
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(Logger),
@@ -316,6 +310,7 @@ CONFIG_SCHEMA = cv.All(
                 ln882x=DEFAULT,
                 rtl87xx=DEFAULT,
                 nrf52=USB_CDC,
+                nrf52_nrf54l=UART0,
             ): cv.All(
                 cv.only_on(
                     [
@@ -517,7 +512,10 @@ async def _late_logger_init(config: ConfigType) -> None:
         zephyr_add_prj_conf("THREAD_LOCAL_STORAGE", True)
         if has_serial_logging:
             zephyr_add_prj_conf("SERIAL", True)
-            if config[CONF_HARDWARE_UART] == UART0 and not zephyr_is_nrf54l():
+            if (
+                config[CONF_HARDWARE_UART] == UART0
+                and get_nrf52_variant() == VARIANT_NRF52
+            ):
                 zephyr_add_overlay("""&uart0 { status = "okay";};""")
             if config[CONF_HARDWARE_UART] == UART1:
                 zephyr_add_overlay("""&uart1 { status = "okay";};""")

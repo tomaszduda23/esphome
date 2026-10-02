@@ -315,6 +315,7 @@ _WEST_PROJECTS_FILE = ".west_projects"
 @dataclass
 class _Nrf52Data:
     west_projects: set[str] = field(default_factory=lambda: set(DEFAULT_WEST_PROJECTS))
+    variant: str | None = None
 
 
 def _get_data() -> _Nrf52Data:

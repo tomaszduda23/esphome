@@ -2140,6 +2140,7 @@ class SplitDefault(Optional):
     variant strips just ``RP`` (``RP2040`` → ``2040``, ``RP2350`` → ``2350``)
     so kwargs read naturally — `rp2_2040=...` is the override for the
     Pico / Pico W and `rp2_2350=...` is the override for the Pico 2.
+    For nRF52 the variant is used as is, lowercased (``nrf52_nrf54l``).
     """
 
     def __init__(self, key, **kwargs):
@@ -2178,6 +2179,14 @@ class SplitDefault(Optional):
                 keys += _get_default_key(variant, framework)
                 keys += _get_default_key(variant)
             keys += _get_default_key(framework)
+        elif CORE.is_nrf52:
+            # Keys use the lowercase variant name (``nrf52_nrf54l``). Same
+            # defensive lookup as rp2: the variant is unset until the nrf52
+            # component's ``set_core_data`` has run.
+            from esphome.components.nrf52 import get_nrf52_variant
+
+            if raw_variant := get_nrf52_variant():
+                keys += _get_default_key(raw_variant.lower())
         keys += _get_default_key()
         for key in keys:
             if self._defaults.get(key) is not None:

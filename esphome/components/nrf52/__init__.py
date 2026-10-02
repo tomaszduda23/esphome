@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import logging
 from pathlib import Path
 import re
 import shutil
 import subprocess
+from typing import Any
 
 from esphome import pins
 from esphome.build_helpers import pch
@@ -17,7 +19,6 @@ from esphome.components.zephyr import (
     zephyr_add_pm_static,
     zephyr_add_prj_conf,
     zephyr_data,
-    zephyr_is_nrf54l,
     zephyr_set_core_data,
     zephyr_setup_preferences,
     zephyr_to_code,
@@ -42,6 +43,7 @@ from esphome.const import (
     CONF_RESET_PIN,
     CONF_SAFE_MODE,
     CONF_TOOLCHAIN,
+    CONF_VARIANT,
     CONF_VERSION,
     CONF_VOLTAGE,
     KEY_CORE,
@@ -70,8 +72,13 @@ from .const import (
     BOOTLOADER_ADAFRUIT_NRF52_SD132,
     BOOTLOADER_ADAFRUIT_NRF52_SD140_V6,
     BOOTLOADER_ADAFRUIT_NRF52_SD140_V7,
+    VARIANT_FRIENDLY,
+    VARIANT_NRF52,
+    VARIANT_NRF54L,
+    VARIANTS,
 )
 from .framework import (
+    _get_data,
     check_and_install,
     get_build_env,
     get_build_paths,
@@ -122,6 +129,7 @@ def set_core_data(config: ConfigType) -> ConfigType:
     zephyr_set_core_data(config)
     CORE.data[KEY_CORE][KEY_TARGET_PLATFORM] = PLATFORM_NRF52
     CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK] = KEY_ZEPHYR
+    _get_data().variant = config[CONF_VARIANT]
 
     if config[KEY_BOOTLOADER] in BOOTLOADER_CONFIG:
         zephyr_add_pm_static(BOOTLOADER_CONFIG[config[KEY_BOOTLOADER]])
@@ -201,6 +209,65 @@ def _detect_bootloader(config: ConfigType) -> ConfigType:
     return config
 
 
+def _variant_from_board(board: str) -> str | None:
+    """Return the variant named by the SoC part of a Zephyr board target, if any.
+
+    e.g. ``nrf54l15dk/nrf54l15/cpuapp`` -> ``NRF54L``.
+    """
+    if any(part.startswith("nrf54l") for part in board.split("/")):
+        return VARIANT_NRF54L
+    return None
+
+
+def _detect_variant(config: ConfigType) -> ConfigType:
+    board_variant = _variant_from_board(config[CONF_BOARD])
+    if (variant := config.get(CONF_VARIANT)) is None:
+        return {**config, CONF_VARIANT: board_variant or VARIANT_NRF52}
+    variant = cv.one_of(*VARIANTS, upper=True)(variant)
+    if board_variant is not None and variant != board_variant:
+        raise cv.Invalid(
+            f"Option '{CONF_VARIANT}' ({variant}) does not match the selected "
+            f"board '{config[CONF_BOARD]}' ({board_variant}).",
+            path=[CONF_VARIANT],
+        )
+    return {**config, CONF_VARIANT: variant}
+
+
+def get_nrf52_variant() -> str:
+    return _get_data().variant
+
+
+def only_on_variant(
+    *,
+    supported: str | list[str] | None = None,
+    unsupported: str | list[str] | None = None,
+    msg_prefix: str = "This feature",
+) -> Callable[[Any], Any]:
+    """Config validator for features only available on some nRF variants."""
+    if supported is not None and not isinstance(supported, list):
+        supported = [supported]
+    if unsupported is not None and not isinstance(unsupported, list):
+        unsupported = [unsupported]
+
+    def validator_(obj: Any) -> Any:
+        if not CORE.is_nrf52:
+            raise cv.Invalid(f"{msg_prefix} is only available on nRF52")
+        variant = get_nrf52_variant()
+        if supported is not None and variant not in supported:
+            raise cv.Invalid(
+                f"{msg_prefix} is only available on "
+                f"{', '.join(VARIANT_FRIENDLY[v] for v in supported)}"
+            )
+        if unsupported is not None and variant in unsupported:
+            raise cv.Invalid(
+                f"{msg_prefix} is not available on "
+                f"{', '.join(VARIANT_FRIENDLY[v] for v in unsupported)}"
+            )
+        return obj
+
+    return validator_
+
+
 nrf52_ns = cg.esphome_ns.namespace("nrf52")
 DeviceFirmwareUpdate = nrf52_ns.class_("DeviceFirmwareUpdate", cg.Component)
 
@@ -231,12 +298,14 @@ def _dfu_schema(value: bool | ConfigType) -> ConfigType:
 
 CONFIG_SCHEMA = cv.All(
     _detect_bootloader,
+    _detect_variant,
     set_core_data,
     cv.Schema(
         {
             cv.Required(CONF_BOARD): cv.All(
                 cv.string_strict, cv.ByteLength(max=BOARD_MAX_LENGTH)
             ),
+            cv.Optional(CONF_VARIANT): cv.one_of(*VARIANTS, upper=True),
             cv.Optional(KEY_BOOTLOADER): cv.one_of(*BOOTLOADERS, lower=True),
             cv.Optional(CONF_DFU): _dfu_schema,
             cv.Optional(CONF_DCDC): cv.boolean,
@@ -291,6 +360,9 @@ def _final_validate(config):
             "Please use 'toolchain: sdk-nrf' instead."
         )
 
+    for key in (CONF_DFU, CONF_DCDC, CONF_REG0):
+        if key in config:
+            only_on_variant(supported=VARIANT_NRF52, msg_prefix=f"'{key}'")(config)
     if CONF_DFU in config:
         _validate_mcumgr(config)
     if config[KEY_BOOTLOADER] == BOOTLOADER_ADAFRUIT:
@@ -332,7 +404,8 @@ async def to_code(config: ConfigType) -> None:
     """Convert the configuration to code."""
     cg.add_build_flag("-DUSE_NRF52")
     cg.add_define("ESPHOME_BOARD", config[CONF_BOARD])
-    cg.add_define("ESPHOME_VARIANT", "NRF52")
+    variant = config[CONF_VARIANT]
+    cg.add_define("ESPHOME_VARIANT", variant)
     # nRF52 processors are single-core
     cg.add_define(ThreadModel.SINGLE)
     if CORE.using_toolchain_platformio:
@@ -379,7 +452,7 @@ async def to_code(config: ConfigType) -> None:
     zephyr_setup_preferences()
     zephyr_to_code(config)
 
-    if zephyr_is_nrf54l():
+    if variant == VARIANT_NRF54L:
         # The entropy driver uses the CRACEN PSA crypto driver from nrf_security
         include_west_project("mbedtls")
         include_west_project("oberon-psa-crypto")
@@ -426,7 +499,7 @@ async def to_code(config: ConfigType) -> None:
     # watchdog
     zephyr_add_prj_conf("WATCHDOG", True)
     zephyr_add_prj_conf("WDT_DISABLE_AT_BOOT", False)
-    if zephyr_is_nrf54l():
+    if variant == VARIANT_NRF54L:
         # nRF54L boards alias watchdog0 to wdt31, which is disabled by default
         zephyr_add_overlay(
             """
