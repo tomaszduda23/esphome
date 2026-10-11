@@ -14,6 +14,7 @@ from esphome.writer import clean_cmake_cache
 from .const import (
     CONF_CDC_ACM,
     KEY_BOOTLOADER,
+    KEY_CDC_ACM_RATE_CALLBACK,
     KEY_EXTRA_BUILD_FILES,
     KEY_KCONFIG,
     KEY_OVERLAY,
@@ -78,6 +79,7 @@ class ZephyrData(TypedDict):
     kconfig: str
     sysbuild: bool
     overlay_builder: list[Callable[[], str]]
+    cdc_acm_rate_callback: bool
 
 
 def zephyr_set_core_data(config: ConfigType) -> None:
@@ -96,6 +98,7 @@ def zephyr_set_core_data(config: ConfigType) -> None:
         # config says `bootloader: mcuboot`, so the image can be smaller. This was
         # the default behaviour in SDK 2.6.1.
         sysbuild=False,
+        cdc_acm_rate_callback=False,
     )
 
 
@@ -177,10 +180,8 @@ def zephyr_to_code(config: ConfigType) -> None:
 
 @coroutine_with_priority(CoroPriority.FINAL)
 async def _cdc_acm_to_code(config: ConfigType) -> None:
-    need_cdc_cb = zephyr_data()[KEY_PRJ_CONF][""].get(
-        "CONFIG_CDC_ACM_DTE_RATE_CALLBACK_SUPPORT", (False,)
-    )[0]
-    if need_cdc_cb:
+    if zephyr_data()[KEY_CDC_ACM_RATE_CALLBACK]:
+        cg.add_define("USE_ZEPHYR_CDC_ACM_RATE_CALLBACK")
         var = cg.new_Pvariable(config[CONF_CDC_ACM])
         await cg.register_component(var, {})
 
@@ -205,18 +206,35 @@ def _format_prj_conf_val(value: PrjConfValueType) -> str:
     raise ValueError
 
 
-def zephyr_add_cdc_acm(config: ConfigType, id: int) -> None:
+def zephyr_use_usb_device_next() -> bool:
+    """Return True when the new USB device stack is used instead of the deprecated one."""
     framework_ver: cv.Version = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
-    if CORE.is_nrf52 and framework_ver >= cv.Version(3, 2, 0):
-        zephyr_add_prj_conf("CONFIG_USB_DEVICE_STACK_NEXT", False)
-    zephyr_add_prj_conf("USB_DEVICE_STACK", True)
-    zephyr_add_prj_conf("USB_CDC_ACM", True)
+    return CORE.is_nrf52 and framework_ver >= cv.Version(3, 4, 0)
+
+
+def _zephyr_enable_usb_cdc_acm() -> None:
+    framework_ver: cv.Version = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
     zephyr_add_prj_conf("SERIAL", True)
-    # prevent device to go to susspend, without this communication stop working in python
-    # there should be a way to solve it
-    zephyr_add_prj_conf("USB_DEVICE_REMOTE_WAKEUP", False)
-    # prevent logging when buffer is full
-    zephyr_add_prj_conf("USB_CDC_ACM_LOG_LEVEL_WRN", True)
+    if zephyr_use_usb_device_next():
+        zephyr_add_prj_conf("USB_DEVICE_STACK", False)
+        zephyr_add_prj_conf("USB_DEVICE_STACK_NEXT", True)
+        zephyr_add_prj_conf("USBD_CDC_ACM_CLASS", True)
+        # The USB device is set up by esphome, not by the board's serial backend.
+        zephyr_add_prj_conf("CDC_ACM_SERIAL_INITIALIZE_AT_BOOT", False)
+    else:
+        if CORE.is_nrf52 and framework_ver >= cv.Version(3, 2, 0):
+            zephyr_add_prj_conf("CONFIG_USB_DEVICE_STACK_NEXT", False)
+        zephyr_add_prj_conf("USB_DEVICE_STACK", True)
+        zephyr_add_prj_conf("USB_CDC_ACM", True)
+        # prevent device to go to susspend, without this communication stop working in python
+        # there should be a way to solve it
+        zephyr_add_prj_conf("USB_DEVICE_REMOTE_WAKEUP", False)
+        # prevent logging when buffer is full
+        zephyr_add_prj_conf("USB_CDC_ACM_LOG_LEVEL_WRN", True)
+
+
+def zephyr_add_cdc_acm(config: ConfigType, id: int) -> None:
+    _zephyr_enable_usb_cdc_acm()
     zephyr_add_overlay(
         f"""
             &zephyr_udc0 {{
@@ -226,6 +244,16 @@ def zephyr_add_cdc_acm(config: ConfigType, id: int) -> None:
             }};
         """
     )
+
+
+def zephyr_add_cdc_acm_rate_callback() -> None:
+    """Report USB CDC ACM baud rate changes to CdcAcm callbacks."""
+    _zephyr_enable_usb_cdc_acm()
+    zephyr_data()[KEY_CDC_ACM_RATE_CALLBACK] = True
+    if zephyr_use_usb_device_next():
+        zephyr_add_prj_conf("UART_LINE_CTRL", True)
+    else:
+        zephyr_add_prj_conf("CDC_ACM_DTE_RATE_CALLBACK_SUPPORT", True)
 
 
 def zephyr_add_kconfig(kconfig: str) -> None:

@@ -1,5 +1,6 @@
-#if defined(CONFIG_CDC_ACM_DTE_RATE_CALLBACK_SUPPORT)
 #include "cdc_acm.h"
+#ifdef USE_ZEPHYR_CDC_ACM_RATE_CALLBACK
+#include "usb_device.h"
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/uart/cdc_acm.h>
 
@@ -10,16 +11,21 @@ namespace esphome::zephyr {
 CdcAcm::CdcAcm() { global_cdc_acm = this; }
 
 void CdcAcm::setup() {
-#if DT_HAS_COMPAT_STATUS_OKAY(zephyr_cdc_acm_uart)
+#ifdef CONFIG_USB_DEVICE_STACK_NEXT
+  // The new USB device stack reports baud rate changes through its message callback.
+  usb_device_enable();
+#elif DT_HAS_COMPAT_STATUS_OKAY(zephyr_cdc_acm_uart)
   const struct device *cdc_dev[] = {DT_FOREACH_STATUS_OKAY(zephyr_cdc_acm_uart, DEVICE_AND_COMMA)};
   for (auto &idx : cdc_dev) {
     // only one global callback can be registered
-    cdc_acm_dte_rate_callback_set(idx, CdcAcm::cdc_dte_rate_callback_);
+    cdc_acm_dte_rate_callback_set(idx, CdcAcm::dte_rate_callback);
   }
-#endif  // DT_HAS_COMPAT_STATUS_OKAY(zephyr_cdc_acm_uart)
+#endif
 }
 
-void CdcAcm::cdc_dte_rate_callback_(const struct device *device, uint32_t rate) {
+void CdcAcm::dte_rate_callback(const struct device *device, uint32_t rate) {
+  if (global_cdc_acm == nullptr)
+    return;
   global_cdc_acm->defer([device, rate]() { global_cdc_acm->rate_callbacks_.call(device, rate); });
 }
 

@@ -1,5 +1,6 @@
 #pragma once
-#if defined(CONFIG_CDC_ACM_DTE_RATE_CALLBACK_SUPPORT)
+#include "esphome/core/defines.h"
+#ifdef USE_ZEPHYR_CDC_ACM_RATE_CALLBACK
 
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
@@ -12,9 +13,10 @@ class CdcAcm final : public Component {
   CdcAcm();
   void setup() override;
   template<typename F> void add_on_rate_callback(F &&callback) { this->rate_callbacks_.add(std::forward<F>(callback)); }
+  /// Called by the USB stack when the host changes the baud rate.
+  static void dte_rate_callback(const device *device, uint32_t rate);
 
  protected:
-  static void cdc_dte_rate_callback_(const device *device, uint32_t rate);
   CallbackManager<void(const device *, uint32_t)> rate_callbacks_;
 };
 

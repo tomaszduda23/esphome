@@ -15,6 +15,7 @@ from esphome.components.zephyr import (
     Section,
     add_extra_script,
     copy_files as zephyr_copy_files,
+    zephyr_add_cdc_acm_rate_callback,
     zephyr_add_overlay,
     zephyr_add_pm_static,
     zephyr_add_prj_conf,
@@ -475,6 +476,8 @@ async def to_code(config: ConfigType) -> None:
     # some boards enable USB and UART by default.
     # disable it to prevent extra current consumption.
     zephyr_add_prj_conf("USB_DEVICE_STACK", False, False)
+    if framework_ver >= cv.Version(3, 2, 0):
+        zephyr_add_prj_conf("USB_DEVICE_STACK_NEXT", False, False)
     zephyr_add_prj_conf("SERIAL", False, False)
 
     # disable stuff to make image smaller by default
@@ -495,10 +498,7 @@ async def _dfu_to_code(dfu_config):
         cg.add(var.set_reset_pin(pin))
 
     # DFU uses cdc rate callback to enter bootloader which was disabled explicitly to save power.
-    zephyr_add_prj_conf("USB_DEVICE_STACK", True)
-    zephyr_add_prj_conf("USB_CDC_ACM", True)
-    zephyr_add_prj_conf("CDC_ACM_DTE_RATE_CALLBACK_SUPPORT", True)
-    zephyr_add_prj_conf("SERIAL", True)
+    zephyr_add_cdc_acm_rate_callback()
     await cg.register_component(var, dfu_config)
 
 

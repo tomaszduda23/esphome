@@ -5,6 +5,7 @@ import esphome.codegen as cg
 BOOTLOADER_MCUBOOT = "mcuboot"
 
 KEY_BOOTLOADER: Final = "bootloader"
+KEY_CDC_ACM_RATE_CALLBACK: Final = "cdc_acm_rate_callback"
 KEY_EXTRA_BUILD_FILES: Final = "extra_build_files"
 KEY_OVERLAY: Final = "overlay"
 KEY_OVERLAY_BUILDER: Final = "overlay_builder"
