@@ -142,18 +142,19 @@ NPM1300Config NPM1300Component::load_config_() const {
 
 void NPM1300Component::setup() {
   uint8_t status;
-  if (!this->setup_check(this->read_reg_(REG_BCHG_CHARGE_STATUS, &status)))
+  if (!this->setup_check(this->read_byte_reg16(REG_BCHG_CHARGE_STATUS, &status)))
     return;
 
   // Raise the VBUS current limit before anything turns on a regulator: at the power-on limit of 100 mA the
   // inrush current of a regulator can trip the over-current protection and brown out the board
   if (this->vbus_current_limit_ != NPM1300_UNSET &&
-      !this->setup_check(this->write_reg_(REG_VBUSIN_ILIM_STARTUP, this->vbus_current_limit_) &&
+      !this->setup_check(this->write_byte_reg16(REG_VBUSIN_ILIM_STARTUP, this->vbus_current_limit_) &&
                          this->apply_vbus_current_limit_()))
     return;
 
   const NPM1300Config config = this->load_config_();
-  if (config.thermistor != NPM1300_UNSET && !this->setup_check(this->write_reg_(REG_ADC_NTC_R_SEL, config.thermistor)))
+  if (config.thermistor != NPM1300_UNSET &&
+      !this->setup_check(this->write_byte_reg16(REG_ADC_NTC_R_SEL, config.thermistor)))
     return;
 
   if (config.charger_configured && !this->setup_check(this->configure_charger_(config)))
@@ -167,7 +168,7 @@ void NPM1300Component::setup() {
 #ifdef USE_NPM1300_DATA_PUBLISHER
   if (this->data_publisher_ != nullptr) {
     // The battery current is measured after every battery voltage measurement
-    if (!this->setup_check(this->write_reg_(REG_ADC_IBAT_MEAS_EN, 1)))
+    if (!this->setup_check(this->write_byte_reg16(REG_ADC_IBAT_MEAS_EN, 1)))
       return;
     if (config.charger_configured) {
       this->charge_code_ = config.charger.current;
@@ -182,14 +183,14 @@ void NPM1300Component::setup() {
 }
 
 bool NPM1300Component::apply_vbus_current_limit_() {
-  return this->write_reg_(REG_VBUSIN_ILIM0, this->vbus_current_limit_) &&
-         this->write_reg_(REG_VBUSIN_TASK_UPDATE_ILIM, 1);
+  return this->write_byte_reg16(REG_VBUSIN_ILIM0, this->vbus_current_limit_) &&
+         this->write_byte_reg16(REG_VBUSIN_TASK_UPDATE_ILIM, 1);
 }
 
 bool NPM1300Component::configure_charger_(const NPM1300Config &config) {
   const NPM1300ChargerConfig &charger = config.charger;
   // The charge settings are only taken while the charger is off
-  if (!this->write_reg_(REG_BCHG_ENABLE_CLR, 1))
+  if (!this->write_byte_reg16(REG_BCHG_ENABLE_CLR, 1))
     return false;
   uint8_t current[2];
   uint8_t discharge[2];
@@ -202,13 +203,13 @@ bool NPM1300Component::configure_charger_(const NPM1300Config &config) {
   const uint8_t enable = (CHARGER_DISABLE_RECHARGE | CHARGER_DISABLE_NTC) & ~disable;
   if (this->write_register16(REG_BCHG_ISET_MSB, current, sizeof(current)) != i2c::ERROR_OK ||
       this->write_register16(REG_BCHG_ISET_DISCHARGE_MSB, discharge, sizeof(discharge)) != i2c::ERROR_OK ||
-      !this->write_reg_(REG_BCHG_VTERM, charger.termination_voltage) ||
-      !this->write_reg_(REG_BCHG_VTERM_R, charger.warm_termination_voltage) ||
-      !this->write_reg_(REG_BCHG_VTRICKLE_SEL, charger.trickle_voltage) ||
-      !this->write_reg_(REG_BCHG_ITERM_SEL, charger.termination_current) ||
-      !this->write_reg_(REG_BCHG_DISABLE_SET, disable) || !this->write_reg_(REG_BCHG_DISABLE_CLR, enable) ||
+      !this->write_byte_reg16(REG_BCHG_VTERM, charger.termination_voltage) ||
+      !this->write_byte_reg16(REG_BCHG_VTERM_R, charger.warm_termination_voltage) ||
+      !this->write_byte_reg16(REG_BCHG_VTRICKLE_SEL, charger.trickle_voltage) ||
+      !this->write_byte_reg16(REG_BCHG_ITERM_SEL, charger.termination_current) ||
+      !this->write_byte_reg16(REG_BCHG_DISABLE_SET, disable) || !this->write_byte_reg16(REG_BCHG_DISABLE_CLR, enable) ||
       // Measure the battery temperature automatically while charging
-      !this->write_reg_(REG_ADC_TASK_AUTO_TIM_UPDATE, 1))
+      !this->write_byte_reg16(REG_ADC_TASK_AUTO_TIM_UPDATE, 1))
     return false;
   return !charger.enabled || this->set_charger_enabled(true);
 }
@@ -218,31 +219,25 @@ bool NPM1300Component::configure_output_(uint8_t index, const NPM1300OutputConfi
   if (index < 2) {
     // The software voltage replaces the one set by the VSET pin only once its SWCTRLSEL bit is set
     if (config.voltage != NPM1300_UNSET &&
-        (!this->write_reg_(REG_BUCK1_NORM_VOUT + channel * 2, config.voltage) ||
-         !this->update_register16_(REG_BUCK_SW_CTRL_SEL, 1 << channel, 1 << channel)))
+        (!this->write_byte_reg16(REG_BUCK1_NORM_VOUT + channel * 2, config.voltage) ||
+         !this->update_register16(REG_BUCK_SW_CTRL_SEL, 1 << channel, 1 << channel)))
       return false;
-  } else if ((config.voltage != NPM1300_UNSET && !this->write_reg_(REG_LDSW1_VOUT_SEL + channel, config.voltage)) ||
-             (config.ldo_mode != NPM1300_UNSET && !this->write_reg_(REG_LDSW1_LDO_SEL + channel, config.ldo_mode))) {
+  } else if ((config.voltage != NPM1300_UNSET &&
+              !this->write_byte_reg16(REG_LDSW1_VOUT_SEL + channel, config.voltage)) ||
+             (config.ldo_mode != NPM1300_UNSET &&
+              !this->write_byte_reg16(REG_LDSW1_LDO_SEL + channel, config.ldo_mode))) {
     return false;
   }
   return config.enabled == NPM1300_UNSET ||
          this->set_output_enabled(static_cast<NPM1300Output>(index), config.enabled != 0);
 }
 
-bool NPM1300Component::update_register16_(uint16_t reg, uint8_t mask, uint8_t value) {
-  uint8_t current;
-  if (!this->read_reg_(reg, &current))
-    return false;
-  const uint8_t updated = (current & ~mask) | (value & mask);
-  return updated == current || this->write_reg_(reg, updated);
-}
-
 #ifdef USE_NPM1300_DATA_PUBLISHER
 bool NPM1300Component::read_charge_currents_() {
   uint8_t charge[2];
   uint8_t discharge[2];
-  if (!this->read_reg_(REG_BCHG_ISET_MSB, charge, sizeof(charge)) ||
-      !this->read_reg_(REG_BCHG_ISET_DISCHARGE_MSB, discharge, sizeof(discharge)))
+  if (this->read_register16(REG_BCHG_ISET_MSB, charge, sizeof(charge)) != i2c::ERROR_OK ||
+      this->read_register16(REG_BCHG_ISET_DISCHARGE_MSB, discharge, sizeof(discharge)) != i2c::ERROR_OK)
     return false;
   this->charge_code_ = join_9bit(charge);
   this->discharge_limit_high_ = discharge_limit_ma(join_9bit(discharge)) == 1000;
@@ -254,10 +249,10 @@ bool NPM1300Component::set_charger_enabled(bool enabled) {
   if (this->is_failed())
     return false;
   if (!enabled)
-    return this->write_reg_(REG_BCHG_ENABLE_CLR, 1);
+    return this->write_byte_reg16(REG_BCHG_ENABLE_CLR, 1);
   // A charger error stops the charger until the error is cleared and the charger released
-  return this->write_reg_(REG_BCHG_TASK_CLEAR_CHG_ERR, 1) && this->write_reg_(REG_BCHG_TASK_RELEASE_ERR, 1) &&
-         this->write_reg_(REG_BCHG_ENABLE_SET, 1);
+  return this->write_byte_reg16(REG_BCHG_TASK_CLEAR_CHG_ERR, 1) &&
+         this->write_byte_reg16(REG_BCHG_TASK_RELEASE_ERR, 1) && this->write_byte_reg16(REG_BCHG_ENABLE_SET, 1);
 }
 
 bool NPM1300Component::set_output_enabled(NPM1300Output output, bool enabled) {
@@ -267,7 +262,7 @@ bool NPM1300Component::set_output_enabled(NPM1300Output output, bool enabled) {
   // A pair of SET and CLR task registers per output
   const uint16_t base = index < 2 ? REG_BUCK1_ENA_SET : REG_LDSW1_TASK_SET;
   const uint16_t reg = base + (index & 1) * 2 + (enabled ? 0 : 1);
-  if (!this->write_reg_(reg, 1)) {
+  if (!this->write_byte_reg16(reg, 1)) {
     ESP_LOGW(TAG, "Turning output %u %s failed", index, enabled ? LOG_STR_LITERAL("on") : LOG_STR_LITERAL("off"));
     return false;
   }
@@ -276,7 +271,7 @@ bool NPM1300Component::set_output_enabled(NPM1300Output output, bool enabled) {
 
 void NPM1300Component::enter_ship_mode() {
   ESP_LOGI(TAG, "Entering ship mode");
-  this->write_reg_(REG_SHIP_TASK_SHIP_MODE, 1);
+  this->write_byte_reg16(REG_SHIP_TASK_SHIP_MODE, 1);
 }
 
 void NPM1300Component::hibernate(uint32_t duration_ms) {
@@ -285,24 +280,24 @@ void NPM1300Component::hibernate(uint32_t duration_ms) {
   uint8_t timer[3];
   put_be24(timer, ticks);
   ESP_LOGI(TAG, "Hibernating for %" PRIu32 " ms", ticks * TIMER_TICK_MS);
-  if (!this->write_reg_(REG_TIMER_CONFIG, TIMER_CONFIG_WAKEUP) ||
+  if (!this->write_byte_reg16(REG_TIMER_CONFIG, TIMER_CONFIG_WAKEUP) ||
       this->write_register16(REG_TIMER_HI_BYTE, timer, sizeof(timer)) != i2c::ERROR_OK ||
-      !this->write_reg_(REG_TIMER_TARGET_STROBE, 1)) {
+      !this->write_byte_reg16(REG_TIMER_TARGET_STROBE, 1)) {
     ESP_LOGW(TAG, "Setting the wake-up timer failed");
     return;
   }
   // The timer needs a moment to load the new period
   delay(1);
-  this->write_reg_(REG_SHIP_TASK_HIBERNATE, 1);
+  this->write_byte_reg16(REG_SHIP_TASK_HIBERNATE, 1);
 }
 
 void NPM1300Component::update() {
   uint8_t vbus_status;
   uint8_t charge_status;
   uint8_t error_reason;
-  if (!this->status_comm_check(this->read_reg_(REG_VBUSIN_STATUS, &vbus_status) &&
-                               this->read_reg_(REG_BCHG_CHARGE_STATUS, &charge_status) &&
-                               this->read_reg_(REG_BCHG_ERR_REASON, &error_reason)))
+  if (!this->status_comm_check(this->read_byte_reg16(REG_VBUSIN_STATUS, &vbus_status) &&
+                               this->read_byte_reg16(REG_BCHG_CHARGE_STATUS, &charge_status) &&
+                               this->read_byte_reg16(REG_BCHG_ERR_REASON, &error_reason)))
     return;
 
   // The chip goes back to its default VBUS current limit whenever VBUS is removed
@@ -330,7 +325,7 @@ void NPM1300Component::update() {
 #ifdef USE_SENSOR
   if (this->vbus_current_limit_sensor_ != nullptr) {
     uint8_t code;
-    if (!this->status_comm_check(this->read_reg_(REG_VBUSIN_ILIM0, &code)))
+    if (!this->status_comm_check(this->read_byte_reg16(REG_VBUSIN_ILIM0, &code)))
       return;
     // Codes 0 and 1 are 100 mA, then 100 mA per step of the code
     const uint16_t milliamps = code < 2 ? 100 : code * 100;
@@ -343,7 +338,7 @@ void NPM1300Component::update() {
     // conversions, then the VBUS one
     static constexpr uint8_t START[4] = {1, 1, 1, 1};
     if (!this->status_comm_check(this->write_register16(REG_ADC_TASK_VBAT, START, sizeof(START)) == i2c::ERROR_OK &&
-                                 this->write_reg_(REG_ADC_TASK_VBUS, 1)))
+                                 this->write_byte_reg16(REG_ADC_TASK_VBUS, 1)))
       return;
     this->set_timeout(READ_TIMEOUT_ID, CONVERSION_TIME_MS, [this]() { this->read_measurements_(); });
     return;
@@ -357,7 +352,7 @@ bool NPM1300Component::publish_switches_() {
   uint8_t value;
   bool ok = true;
   if (this->charger_switch_ != nullptr) {
-    if (this->read_reg_(REG_BCHG_ENABLE_SET, &value)) {
+    if (this->read_byte_reg16(REG_BCHG_ENABLE_SET, &value)) {
       this->charger_switch_->publish_state((value & 1) != 0);
     } else {
       ok = false;
@@ -365,7 +360,7 @@ bool NPM1300Component::publish_switches_() {
   }
   switch_::Switch *const bucks[2] = {this->buck1_switch_, this->buck2_switch_};
   if (bucks[0] != nullptr || bucks[1] != nullptr) {
-    if (this->read_reg_(REG_BUCK_STATUS, &value)) {
+    if (this->read_byte_reg16(REG_BUCK_STATUS, &value)) {
       for (uint8_t i = 0; i < 2; i++)
         PUBLISH_STATE(bucks[i], (value & BUCK_POWER_GOOD[i]) != 0);
     } else {
@@ -374,7 +369,7 @@ bool NPM1300Component::publish_switches_() {
   }
   switch_::Switch *const ldos[2] = {this->ldo1_switch_, this->ldo2_switch_};
   if (ldos[0] != nullptr || ldos[1] != nullptr) {
-    if (this->read_reg_(REG_LDSW_STATUS, &value)) {
+    if (this->read_byte_reg16(REG_LDSW_STATUS, &value)) {
       for (uint8_t i = 0; i < 2; i++)
         PUBLISH_STATE(ldos[i], (value & LDSW_POWERED[i]) != 0);
     } else {
@@ -390,7 +385,7 @@ void NPM1300Component::read_measurements_() {
   // ADCIBATMEASSTATUS, then the VBAT, NTC, TEMP and VSYS results, their low bits, VBAT0 to VBAT3 (VBAT2 holds the
   // battery current and VBAT3 the VBUS voltage) and their low bits
   uint8_t adc[11];
-  if (!this->status_comm_result(this->read_reg_(REG_ADC_RESULTS, adc, sizeof(adc))))
+  if (!this->status_comm_result(this->read_register16(REG_ADC_RESULTS, adc, sizeof(adc)) == i2c::ERROR_OK))
     return;
   // Amperes per code of the battery current, positive while charging and negative while discharging
   float ibat_scale = NAN;

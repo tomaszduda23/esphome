@@ -118,12 +118,7 @@ class NPM1300Component : public PollingComponent, public i2c::I2CDevice {
   void hibernate(uint32_t duration_ms);
 
  protected:
-  bool write_reg_(uint16_t reg, uint8_t value) { return this->write_register16(reg, &value, 1) == i2c::ERROR_OK; }
-  bool read_reg_(uint16_t reg, uint8_t *data, size_t len = 1) {
-    return this->read_register16(reg, data, len) == i2c::ERROR_OK;
-  }
   NPM1300Config load_config_() const;
-  bool update_register16_(uint16_t reg, uint8_t mask, uint8_t value);
   bool apply_vbus_current_limit_();
   bool configure_charger_(const NPM1300Config &config);
   bool configure_output_(uint8_t index, const NPM1300OutputConfig &config);
