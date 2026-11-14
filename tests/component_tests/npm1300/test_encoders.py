@@ -101,12 +101,14 @@ def test_output_mode_and_enabled() -> None:
     assert fields["voltage"] == str(NPM1300_UNSET)
 
 
-@pytest.mark.parametrize(("limit", "code"), [("100mA", 1), ("500mA", 5), ("1.5A", 15)])
+@pytest.mark.parametrize(
+    ("limit", "code"), [("100mA", 1), ("300mA", 3), ("500mA", 5), ("1.5A", 15)]
+)
 def test_vbus_current_limit_code(limit: str, code: int) -> None:
     assert _vbus_current_limit_code(VBUS_CURRENT_LIMIT(limit)) == code
 
 
-@pytest.mark.parametrize("limit", ["50mA", "300mA", "1600mA", "550mA"])
+@pytest.mark.parametrize("limit", ["50mA", "1600mA", "550mA"])
 def test_vbus_current_limit_rejected(limit: str) -> None:
     with pytest.raises(cv.Invalid):
         VBUS_CURRENT_LIMIT(limit)

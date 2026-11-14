@@ -136,7 +136,7 @@ def _stepped(
 
 
 OUTPUT_VOLTAGE = _stepped(cv.voltage, 1000, 3300, 100, "V")
-VBUS_CURRENT_LIMIT = _one_of_units(cv.current, [100, *range(500, 1501, 100)], "A")
+VBUS_CURRENT_LIMIT = _stepped(cv.current, 100, 1500, 100, "A")
 
 BUCK_SCHEMA = cv.Schema(
     {

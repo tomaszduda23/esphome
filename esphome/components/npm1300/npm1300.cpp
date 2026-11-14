@@ -327,8 +327,8 @@ void NPM1300Component::update() {
     uint8_t code;
     if (!this->status_comm_check(this->read_byte_reg16(REG_VBUSIN_ILIM0, &code)))
       return;
-    // Codes 0 and 1 are 100 mA, then 100 mA per step of the code
-    const uint16_t milliamps = code < 2 ? 100 : code * 100;
+    // 100 mA per step of the code, but code 0 is 500 mA
+    const uint16_t milliamps = code == 0 ? 500 : code * 100;
     this->vbus_current_limit_sensor_->publish_state(milliamps / 1000.0f);
   }
 #endif
