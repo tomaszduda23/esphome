@@ -104,7 +104,7 @@ class NPM1300Component : public PollingComponent, public i2c::I2CDevice {
   HUB_PUBLISHER(dump, const char *)
 #endif
 
-  /// VBUSINILIM0 code: 100 mA per step of the code, codes 0 and 1 are both 100 mA
+  /// VBUSINILIM0 code: 100 mA per step (code 0, the reset value, is 500 mA)
   void set_vbus_current_limit(uint8_t code) { this->vbus_current_limit_ = code; }
 
   /// Turn the battery charger on or off; turning it on also clears a charger error
