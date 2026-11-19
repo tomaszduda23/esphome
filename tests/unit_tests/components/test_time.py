@@ -1,5 +1,6 @@
 """Tests for time component cron expression parsing."""
 
+import asyncio
 from collections.abc import Callable
 import errno
 import subprocess
@@ -8,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from esphome.components import time
 from esphome.components.time import (
     _load_tzdata,
     _parse_cron_part,
@@ -16,6 +18,8 @@ from esphome.components.time import (
     validate_tz,
 )
 import esphome.config_validation as cv
+from esphome.const import KEY_CORE, KEY_FRAMEWORK_VERSION, KEY_TARGET_FRAMEWORK
+from esphome.core import CORE
 
 
 def test_star_slash_seconds() -> None:
@@ -255,3 +259,33 @@ def test_validate_tz_imports_aioesphomeapi_lazily() -> None:
         "validate_tz('EST5EDT,M3.2.0,M11.1.0')"
     )
     assert "aioesphomeapi" in modules
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("2.6.1", ["POSIX_CLOCK"]),
+        ("2.9.2", ["POSIX_CLOCK", "POSIX_SINGLE_PROCESS", "XSI_SINGLE_PROCESS"]),
+        ("3.1.0", ["POSIX_TIMERS", "POSIX_SINGLE_PROCESS", "XSI_SINGLE_PROCESS"]),
+        (
+            "3.4.2",
+            [
+                "POSIX_SYSTEM_INTERFACES",
+                "POSIX_TIMERS",
+                "POSIX_SINGLE_PROCESS",
+                "XSI_SINGLE_PROCESS",
+            ],
+        ),
+    ],
+)
+def test_zephyr_posix_options(version: str, expected: list[str]) -> None:
+    """sdk-nrf 3.1 replaced POSIX_CLOCK, and 3.3 put the options under POSIX_SYSTEM_INTERFACES."""
+    CORE.data[KEY_CORE] = {
+        KEY_FRAMEWORK_VERSION: cv.Version.parse(version),
+        KEY_TARGET_FRAMEWORK: "zephyr",
+    }
+    with patch.object(time, "zephyr_add_prj_conf") as add_prj_conf:
+        asyncio.run(time.to_code({}))
+    assert [c.args for c in add_prj_conf.call_args_list] == [
+        (name, True) for name in expected
+    ]

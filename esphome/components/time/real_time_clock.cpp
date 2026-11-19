@@ -3,7 +3,12 @@
 #ifdef USE_HOST
 #include <sys/time.h>
 #elif defined(USE_ZEPHYR)
+// Zephyr 4.4 (sdk-nrf 3.4) dropped this header; <time.h> declares clock_settime() there
+#if __has_include(<zephyr/posix/time.h>)
 #include <zephyr/posix/time.h>
+#else
+#include <time.h>
+#endif
 #else
 #include "lwip/opt.h"
 #endif

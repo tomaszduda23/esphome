@@ -469,11 +469,19 @@ async def register_time(time_var, config):
 @coroutine_with_priority(CoroPriority.CORE)
 async def to_code(config):
     if CORE.using_zephyr:
-        zephyr_add_prj_conf("POSIX_CLOCK", True)
+        framework_ver = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
+        # sdk-nrf 3.1 dropped POSIX_CLOCK for POSIX_TIMERS, and from 3.3 the POSIX
+        # options sit under POSIX_SYSTEM_INTERFACES
+        if framework_ver >= cv.Version(3, 3, 0):
+            zephyr_add_prj_conf("POSIX_SYSTEM_INTERFACES", True)
+        if framework_ver >= cv.Version(3, 1, 0):
+            zephyr_add_prj_conf("POSIX_TIMERS", True)
+        else:
+            zephyr_add_prj_conf("POSIX_CLOCK", True)
         # From sdk-nrf 2.8.0 newlib time() gets the clock through gettimeofday(),
         # which Zephyr only provides with XSI_SINGLE_PROCESS. Without it time()
         # always returns -1.
-        if CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION] >= cv.Version(2, 8, 0):
+        if framework_ver >= cv.Version(2, 8, 0):
             zephyr_add_prj_conf("POSIX_SINGLE_PROCESS", True)
             zephyr_add_prj_conf("XSI_SINGLE_PROCESS", True)
     cg.add_define("USE_TIME")
