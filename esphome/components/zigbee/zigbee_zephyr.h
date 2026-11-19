@@ -45,6 +45,15 @@ extern "C" {
 
 namespace esphome::zigbee {
 
+// ZBOSS 5 (ncs-zigbee 2.x) packs a callback's buffer and user data into one 32-bit argument
+#if ZBOSS_MAJOR >= 5
+using CallbackParam = zb_cb_param_t;
+inline zb_bufid_t callback_buf(CallbackParam param) { return ZB_UNPACK_BUF_REF(param); }
+#else
+using CallbackParam = zb_uint8_t;
+inline zb_bufid_t callback_buf(CallbackParam param) { return param; }
+#endif
+
 struct BinaryAttrs {
   zb_bool_t out_of_service;
   zb_bool_t present_value;
@@ -85,7 +94,7 @@ class ZigbeeComponent final : public Component {
   void add_radio_sleep_time_ms(uint32_t ms);
 
  protected:
-  static void zcl_device_cb(zb_bufid_t bufid);
+  static void zcl_device_cb(CallbackParam param);
   void on_join_(bool factory_new);
   void on_start_();
 #ifdef USE_ZIGBEE_WIPE_ON_BOOT

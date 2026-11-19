@@ -106,7 +106,8 @@ void ZigbeeComponent::zboss_signal_handler_esphome(zb_bufid_t bufid) {
   }
 }
 
-void ZigbeeComponent::zcl_device_cb(zb_bufid_t bufid) {
+void ZigbeeComponent::zcl_device_cb(CallbackParam param) {
+  zb_bufid_t bufid = callback_buf(param);
   zb_zcl_device_callback_param_t *p_device_cb_param = ZB_BUF_GET_PARAM(bufid, zb_zcl_device_callback_param_t);
   zb_zcl_device_callback_id_t device_cb_id = p_device_cb_param->device_cb_id;
   zb_uint16_t cluster_id = p_device_cb_param->cb_param.set_attr_value_param.cluster_id;
@@ -174,9 +175,16 @@ void ZigbeeComponent::setup() {
   }
 #endif
   if (wipe) {
+#ifdef CONFIG_PARTITION_MANAGER_ENABLED
     erase_flash_(FIXED_PARTITION_ID(ZBOSS_NVRAM));
     erase_flash_(FIXED_PARTITION_ID(ZBOSS_PRODUCT_CONFIG));
     erase_flash_(FIXED_PARTITION_ID(SETTINGS_STORAGE));
+#else
+    // Devicetree partitions of the ncs-zigbee add-on's flash layout
+    erase_flash_(PARTITION_ID(zboss_nvram));
+    erase_flash_(PARTITION_ID(zboss_product_config));
+    erase_flash_(PARTITION_ID(storage_partition));
+#endif
 #ifdef USE_ZIGBEE_WIPE_ON_BOOT_MAGIC
     wipe_value = USE_ZIGBEE_WIPE_ON_BOOT_MAGIC;
     wipe_pref.save(&wipe_value);
@@ -254,9 +262,9 @@ void ZigbeeComponent::dump_config() {
   dump_reporting_();
 }
 
-static void send_attribute_report(zb_bufid_t bufid, zb_uint16_t cmd_id) {
+static void send_attribute_report(CallbackParam param) {
   ESP_LOGD(TAG, "Force zboss scheduler to wake and send attribute report");
-  zb_buf_free(bufid);
+  zb_buf_free(callback_buf(param));
 }
 
 void ZigbeeComponent::force_report() {
@@ -274,7 +282,7 @@ void ZigbeeComponent::add_radio_sleep_time_ms(uint32_t ms) {
 void ZigbeeComponent::loop() {
   if (this->force_report_) {
     this->force_report_ = false;
-    zb_buf_get_out_delayed_ext(send_attribute_report, 0, 0);
+    zb_buf_get_out_delayed(send_attribute_report);
   }
   this->disable_loop();
 }
@@ -330,7 +338,9 @@ void ZigbeeComponent::after_reporting_info(zb_zcl_configure_reporting_req_t *con
 }  // namespace esphome::zigbee
 
 extern "C" {
-void zboss_signal_handler(zb_uint8_t param) { esphome::zigbee::global_zigbee->zboss_signal_handler_esphome(param); }
+void zboss_signal_handler(esphome::zigbee::CallbackParam param) {
+  esphome::zigbee::global_zigbee->zboss_signal_handler_esphome(esphome::zigbee::callback_buf(param));
+}
 void zb_osif_serial_put_bytes(const zb_uint8_t *buf, zb_short_t len) {
   (void) buf;
   (void) len;

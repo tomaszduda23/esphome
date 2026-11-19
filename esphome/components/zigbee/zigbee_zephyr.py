@@ -3,14 +3,25 @@ import random
 
 import esphome.codegen as cg
 from esphome.components.const import CONF_MANUFACTURER
-from esphome.components.zephyr import zephyr_add_prj_conf
+from esphome.components.nrf52.const import VARIANT_NRF54L15, VARIANT_NRF54LM20
+from esphome.components.nrf52.framework import (
+    ZephyrModule,
+    get_nrf52_variant,
+    include_west_project,
+    include_zephyr_module,
+)
+from esphome.components.zephyr import HexValue, zephyr_add_overlay, zephyr_add_prj_conf
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_ID,
     CONF_MODEL,
     CONF_NAME,
+    CONF_OTA,
+    CONF_PLATFORM,
     CONF_UNIT_OF_MEASUREMENT,
     CONF_VERSION,
+    KEY_CORE,
+    KEY_FRAMEWORK_VERSION,
 )
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
 from esphome.cpp_generator import (
@@ -18,6 +29,7 @@ from esphome.cpp_generator import (
     MockObj,
     VariableDeclarationExpression,
 )
+import esphome.final_validate as fv
 from esphome.types import ConfigType
 
 from .const import (
@@ -44,6 +56,8 @@ from .const_zephyr import (
     CONF_ZIGBEE_SENSOR,
     CONF_ZIGBEE_SWITCH,
     KEY_EP_NUMBER,
+    NCS_ZIGBEE_COMMITS,
+    NCS_ZIGBEE_URL,
     ZB_ZCL_BASIC_ATTRS_EXT_T,
     ZB_ZCL_CLUSTER_ID_ANALOG_INPUT,
     ZB_ZCL_CLUSTER_ID_ANALOG_OUTPUT,
@@ -60,8 +74,78 @@ ZigbeeSwitch = zigbee_ns.class_("ZigbeeSwitch", cg.Component)
 ZigbeeNumber = zigbee_ns.class_("ZigbeeNumber", cg.Component)
 
 
+# Nordic's Zigbee flash layout for each SoC the add-on is used on, from its dts directory: the
+# application, an 8 kB settings storage and the ZBOSS NVRAM and product configuration partitions
+_ADD_ON_PARTITIONS = {
+    VARIANT_NRF54L15: "nrf54l15_cpuapp_partitions.dtsi",
+    VARIANT_NRF54LM20: "nrf54lm20_cpuapp_partitions.dtsi",
+}
+
+
+def _uses_add_on() -> bool:
+    """sdk-nrf 3.0 and newer build Zigbee with the ncs-zigbee add-on."""
+    return CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION] >= cv.Version(3, 0, 0)
+
+
+def _add_on_commit() -> str | None:
+    version = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
+    return NCS_ZIGBEE_COMMITS.get(f"{version.major}.{version.minor}.{version.patch}")
+
+
+def final_validate_zephyr(config: ConfigType) -> ConfigType:
+    version = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
+    variant = get_nrf52_variant()
+    supported = ", ".join(NCS_ZIGBEE_COMMITS)
+    if not _uses_add_on():
+        if variant in _ADD_ON_PARTITIONS:
+            raise cv.Invalid(
+                f"Zigbee on {variant} needs sdk-nrf {supported}; set "
+                f"'version: {max(NCS_ZIGBEE_COMMITS, key=cv.Version.parse)}' "
+                "under 'framework:' of nrf52"
+            )
+        return config
+    if variant not in _ADD_ON_PARTITIONS:
+        raise cv.Invalid(
+            f"Zigbee on {variant} needs sdk-nrf 2.9.2 or older, not {version}"
+        )
+    if CORE.using_toolchain_platformio:
+        raise cv.Invalid(
+            f"Zigbee on sdk-nrf {version} needs 'toolchain: sdk-nrf' under nrf52"
+        )
+    if _add_on_commit() is None:
+        raise cv.Invalid(
+            f"Zigbee is not available for sdk-nrf {version}. Supported versions: "
+            f"{supported}"
+        )
+    # The Zigbee flash layout leaves no room for MCUboot and a second image slot
+    if any(
+        ota.get(CONF_PLATFORM) == "zephyr_mcumgr"
+        for ota in fv.full_config.get().get(CONF_OTA, [])
+    ):
+        raise cv.Invalid(
+            f"Zigbee on sdk-nrf {version} can't be used with zephyr_mcumgr OTA updates"
+        )
+    return config
+
+
 async def zephyr_to_code(config: ConfigType) -> "MockObj":
-    zephyr_add_prj_conf("ZIGBEE", True)
+    if _uses_add_on():
+        include_zephyr_module(
+            ZephyrModule("ncs-zigbee", NCS_ZIGBEE_URL, _add_on_commit())
+        )
+        # The add-on does its crypto through PSA
+        include_west_project("mbedtls")
+        include_west_project("oberon-psa-crypto")
+        zephyr_add_prj_conf("ZIGBEE_ADD_ON", True)
+        # The add-on's dts directory is a devicetree root, so its layouts can be included
+        zephyr_add_overlay(f"#include <{_ADD_ON_PARTITIONS[get_nrf52_variant()]}>\n")
+    else:
+        zephyr_add_prj_conf("ZIGBEE", True)
+        zephyr_add_prj_conf("CRYPTO", True)
+        # The stack in sdk-nrf sits on the Zephyr network stack, which needs no IP
+        zephyr_add_prj_conf("NET_IPV6", False)
+        zephyr_add_prj_conf("NET_IP_ADDR_CHECK", False)
+        zephyr_add_prj_conf("NET_UDP", False)
     zephyr_add_prj_conf("ZIGBEE_APP_UTILS", True)
     if config[CONF_ROUTER]:
         zephyr_add_prj_conf("ZIGBEE_ROLE_ROUTER", True)
@@ -69,12 +153,6 @@ async def zephyr_to_code(config: ConfigType) -> "MockObj":
         zephyr_add_prj_conf("ZIGBEE_ROLE_END_DEVICE", True)
 
     zephyr_add_prj_conf("ZIGBEE_CHANNEL_SELECTION_MODE_MULTI", True)
-
-    zephyr_add_prj_conf("CRYPTO", True)
-
-    zephyr_add_prj_conf("NET_IPV6", False)
-    zephyr_add_prj_conf("NET_IP_ADDR_CHECK", False)
-    zephyr_add_prj_conf("NET_UDP", False)
 
     # disable all extra to reduce power and save flash
     zephyr_add_prj_conf("ZIGBEE_HAVE_SERIAL", False)
@@ -91,12 +169,14 @@ async def zephyr_to_code(config: ConfigType) -> "MockObj":
     cg.add_build_flag("-Wl,--wrap=zb_trans_enter_receive")
     cg.add_build_flag("-Wl,--wrap=zb_trans_transmit")
 
-    if CONF_IEEE802154_VENDOR_OUI in config:
-        zephyr_add_prj_conf("IEEE802154_VENDOR_OUI_ENABLE", True)
-        random_number = config[CONF_IEEE802154_VENDOR_OUI]
-        if random_number == "random":
-            random_number = random.randint(0x000000, 0xFFFFFF)
-        zephyr_add_prj_conf("IEEE802154_VENDOR_OUI", random_number)
+    if (vendor_oui := config.get(CONF_IEEE802154_VENDOR_OUI)) is not None:
+        if vendor_oui == "random":
+            vendor_oui = random.randint(0x000000, 0xFFFFFF)
+        if _uses_add_on():
+            zephyr_add_prj_conf("ZIGBEE_VENDOR_OUI", HexValue(vendor_oui))
+        else:
+            zephyr_add_prj_conf("IEEE802154_VENDOR_OUI_ENABLE", True)
+            zephyr_add_prj_conf("IEEE802154_VENDOR_OUI", vendor_oui)
 
     if config[CONF_WIPE_ON_BOOT]:
         if config[CONF_WIPE_ON_BOOT] == "once":

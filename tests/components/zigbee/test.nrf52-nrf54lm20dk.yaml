@@ -1,0 +1,5 @@
+<<: !include common.yaml
+
+zigbee:
+  router: true
+  wipe_on_boot: true

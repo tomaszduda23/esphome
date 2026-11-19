@@ -218,10 +218,19 @@ def final_validate_strings(config: ConfigType) -> ConfigType:
     return config
 
 
+def final_validate_nrf52(config: ConfigType) -> ConfigType:
+    if not CORE.is_nrf52:
+        return config
+    from .zigbee_zephyr import final_validate_zephyr
+
+    return final_validate_zephyr(config)
+
+
 FINAL_VALIDATE_SCHEMA = cv.All(
     final_validate_strings,
     validate_number_of_ep,
     final_validate_esp32,
+    final_validate_nrf52,
 )
 
 

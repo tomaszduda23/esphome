@@ -18,6 +18,7 @@ from esphome.components.nrf52.framework import (
     _REQUIREMENTS,
     DEFAULT_WEST_PROJECTS,
     TOOLCHAIN_VERSION,
+    ZephyrModule,
     _get_penv_site_packages,
     _get_platformio_penv_path,
     _install_toolchain,
@@ -25,8 +26,10 @@ from esphome.components.nrf52.framework import (
     get_build_env,
     get_sdk_nrf_tools_path,
     include_west_project,
+    include_zephyr_module,
     setup_platformio_python_env,
     wanted_west_projects,
+    zephyr_module_paths,
 )
 from esphome.components.zephyr.const import KEY_SYSBUILD, KEY_ZEPHYR
 import esphome.config_validation as cv
@@ -1380,3 +1383,56 @@ def test_pyocd_target_found_in_an_env_of_another_python_version(
     ):
         assert framework.pyocd_has_builtin_target("target_nRF54L15.py")
         assert not framework.pyocd_has_builtin_target("target_nRF54LM20A.py")
+
+
+_MODULE = ZephyrModule("my-module", "https://example.com/my-module", "0123abcd" * 5)
+
+
+def _git_commands(run_command_ok) -> list[list[str]]:
+    return [c.args[0] for c in run_command_ok.call_args_list if c.args[0][0] == "git"]
+
+
+def test_zephyr_module_paths_default_to_none(setup_core: Path) -> None:
+    assert zephyr_module_paths() == []
+
+
+def test_zephyr_module_fetched_at_its_commit(
+    nrf52_dirs: SimpleNamespace, mock_nrf52_ops: SimpleNamespace
+) -> None:
+    """A module from outside the manifest is fetched once, at the pinned commit."""
+    _mark_installed(nrf52_dirs)
+    include_zephyr_module(_MODULE)
+
+    check_and_install()
+
+    (path,) = zephyr_module_paths()
+    assert path == get_sdk_nrf_tools_path() / "modules" / _MODULE.name / _MODULE.commit
+    assert _git_commands(mock_nrf52_ops.run_command_ok) == [
+        ["git", "init", "-q"],
+        ["git", "fetch", "--depth=1", _MODULE.url, _MODULE.commit],
+        ["git", "checkout", "-q", "FETCH_HEAD"],
+    ]
+    assert all(
+        c.kwargs["cwd"] == path
+        for c in mock_nrf52_ops.run_command_ok.call_args_list
+        if c.args[0][0] == "git"
+    )
+    assert (path / ".ready").is_file()
+
+    mock_nrf52_ops.run_command_ok.reset_mock()
+    check_and_install()
+    assert _git_commands(mock_nrf52_ops.run_command_ok) == []
+
+
+def test_failed_zephyr_module_fetch_raises(
+    nrf52_dirs: SimpleNamespace, mock_nrf52_ops: SimpleNamespace
+) -> None:
+    _mark_installed(nrf52_dirs)
+    include_zephyr_module(_MODULE)
+    mock_nrf52_ops.run_command_ok.side_effect = lambda cmd, **_: cmd[1] != "fetch"
+
+    with pytest.raises(EsphomeError, match="Can't fetch Zephyr module my-module"):
+        check_and_install()
+
+    (path,) = zephyr_module_paths()
+    assert not (path / ".ready").exists()

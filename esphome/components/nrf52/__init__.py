@@ -122,6 +122,7 @@ from .framework import (
     setup_platformio_python_env,
     toolchain_tool,
     wanted_west_projects,
+    zephyr_module_paths,
 )
 
 # force import gpio to register pin schema
@@ -1308,6 +1309,7 @@ def _write_pch_checksum(build_dir: Path, source_dir: Path) -> None:
             zephyr_data()[KEY_BOARD],
             # Kconfig inputs that reach autoconf.h without a .conf line
             ",".join(sorted(wanted_west_projects())),
+            ",".join(str(path) for path in zephyr_module_paths()),
             str(zephyr_data().get(KEY_SYSBUILD)),
             # What the Zephyr configuration is generated from
             *(
@@ -1336,7 +1338,10 @@ def _generate_cmake_lists(pch_on: bool) -> bool:
     # framework-agnostic libraries actually compile under Zephyr.
     from esphome.components.zephyr.library import DEFINES_VAR, generate_zephyr_modules
 
-    module_dirs = generate_zephyr_modules(list(CORE.platformio_libraries.values()))
+    module_dirs = [
+        *zephyr_module_paths(),
+        *generate_zephyr_modules(list(CORE.platformio_libraries.values())),
+    ]
     defines = [flag for flag in compile_flags if flag.startswith("-D")]
     options = [flag for flag in compile_flags if not flag.startswith("-D")]
 

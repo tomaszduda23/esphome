@@ -1,0 +1,11 @@
+nrf52:
+  framework:
+    version: 3.4.2
+
+<<: !include common.yaml
+
+zigbee:
+  wipe_on_boot: once
+  power_source: battery
+  ieee802154_vendor_oui: random
+  sleepy: true

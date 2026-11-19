@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from esphome.components import nrf52
 from esphome.components.lvgl import lv_conf_path_flag
+from esphome.components.nrf52.framework import ZephyrModule, include_zephyr_module
 from esphome.components.zephyr import zephyr_to_code
 from esphome.core import CORE
 
@@ -92,3 +93,27 @@ def test_build_flags_are_split_and_quoted(tmp_path: Path) -> None:
         '  "-Wl,--start-group,-lfoo,--end-group"\n'
         ")"
     ) in text
+
+
+def test_zephyr_modules_are_found_before_the_libraries(tmp_path: Path) -> None:
+    """Modules fetched from outside the manifest join the converted libraries."""
+    CORE.config_path = tmp_path / "test.yaml"
+    CORE.build_path = tmp_path / "build"
+    CORE.name = "livingroom"
+    include_zephyr_module(
+        ZephyrModule("ncs-zigbee", "https://example.com/ncs-zigbee", "abc")
+    )
+    with (
+        patch(
+            "esphome.components.zephyr.library.generate_zephyr_modules",
+            return_value=[tmp_path / "lvgl"],
+        ),
+        patch.object(
+            nrf52, "zephyr_module_paths", return_value=[tmp_path / "ncs-zigbee"]
+        ),
+    ):
+        nrf52._generate_cmake_lists(False)
+    text = (tmp_path / "build" / "zephyr" / "CMakeLists.txt").read_text()
+    before = text.split("find_package(Zephyr REQUIRED)", 1)[0]
+    modules = f"{tmp_path / 'ncs-zigbee'};{tmp_path / 'lvgl'}".replace("\\", "/")
+    assert f'set(EXTRA_ZEPHYR_MODULES "{modules}")' in before

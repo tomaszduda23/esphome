@@ -25,3 +25,12 @@ ZB_ZCL_CLUSTER_ID_BINARY_INPUT = "ZB_ZCL_CLUSTER_ID_BINARY_INPUT"
 ZB_ZCL_CLUSTER_ID_ANALOG_INPUT = "ZB_ZCL_CLUSTER_ID_ANALOG_INPUT"
 ZB_ZCL_CLUSTER_ID_BINARY_OUTPUT = "ZB_ZCL_CLUSTER_ID_BINARY_OUTPUT"
 ZB_ZCL_CLUSTER_ID_ANALOG_OUTPUT = "ZB_ZCL_CLUSTER_ID_ANALOG_OUTPUT"
+
+# sdk-nrf 3.0 and newer have no Zigbee stack; Nordic ships it as the ncs-zigbee add-on,
+# whose releases each build on one sdk-nrf version
+NCS_ZIGBEE_URL = "https://github.com/nrfconnect/ncs-zigbee"
+NCS_ZIGBEE_COMMITS = {
+    "3.4.0": "bc7863e99cbbe121d8755bc49586e977cd46d032",  # v1.4.0, ZBOSS 4.2
+    "3.4.1": "bc7863e99cbbe121d8755bc49586e977cd46d032",  # v1.4.0, ZBOSS 4.2
+    "3.4.2": "c99ea1a3f65235045579ff57452497d386925b5d",  # v2.0.0, ZBOSS 5
+}

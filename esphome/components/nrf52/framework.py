@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from typing import NamedTuple
 
 from esphome.build_helpers.ccache import ccache_env
 from esphome.build_helpers.tools_cache import SDK_NRF_TOOLS_CACHE, tools_cache_path
@@ -347,6 +348,15 @@ def _patch_uf2conv_escape_sequences(framework_path: Path) -> None:
 # West projects every build needs; components add others with include_west_project()
 DEFAULT_WEST_PROJECTS = ("cmsis", "hal_nordic", "nrfxlib", "zephyr")
 
+
+class ZephyrModule(NamedTuple):
+    """A Zephyr module from outside the sdk-nrf manifest, fetched at a fixed commit."""
+
+    name: str
+    url: str
+    commit: str  # Full SHA; a tag could be moved
+
+
 _KEY_NRF52 = "nrf52"
 # The projects a finished install fetched
 _WEST_PROJECTS_FILE = ".west_projects"
@@ -355,6 +365,7 @@ _WEST_PROJECTS_FILE = ".west_projects"
 @dataclass
 class _Nrf52Data:
     west_projects: set[str] = field(default_factory=lambda: set(DEFAULT_WEST_PROJECTS))
+    zephyr_modules: dict[str, ZephyrModule] = field(default_factory=dict)
     variant: str = VARIANT_NRF52840
     board: str = ""
 
@@ -386,6 +397,43 @@ def get_nrf52_board() -> str:
 def include_west_project(name: str) -> None:
     """Fetch a west project left out by default; call from to_code()."""
     _get_data().west_projects.add(name)
+
+
+def include_zephyr_module(module: ZephyrModule) -> None:
+    """Fetch a Zephyr module from outside the sdk-nrf manifest and build with it; call from to_code()."""
+    _get_data().zephyr_modules[module.name] = module
+
+
+def _zephyr_module_path(module: ZephyrModule) -> Path:
+    return get_sdk_nrf_tools_path() / "modules" / module.name / module.commit
+
+
+def zephyr_module_paths() -> list[Path]:
+    """The directories of the modules added with include_zephyr_module()."""
+    return [
+        _zephyr_module_path(module)
+        for _, module in sorted(_get_data().zephyr_modules.items())
+    ]
+
+
+def _install_zephyr_module(module: ZephyrModule) -> None:
+    path = _zephyr_module_path(module)
+    sentinel = path / ".ready"
+    if sentinel.exists():
+        return
+    rmdir(path, msg=f"Clean up {module.name} module")
+    path.mkdir(parents=True)
+    _LOGGER.info("Fetching Zephyr module %s (%s) ...", module.name, module.commit)
+    for cmd in (
+        ["git", "init", "-q"],
+        ["git", "fetch", "--depth=1", module.url, module.commit],
+        ["git", "checkout", "-q", "FETCH_HEAD"],
+    ):
+        if not run_command_ok(cmd, cwd=path, stream_output=True):
+            raise EsphomeError(
+                f"Can't fetch Zephyr module {module.name} from {module.url}"
+            )
+    sentinel.touch()
 
 
 def bluetooth_west_projects() -> tuple[str, ...]:
@@ -609,6 +657,9 @@ def _check_and_install(version: str) -> None:
             raise EsphomeError(f"Install Zephyr requirements for {version} failure")
         zephyr_sentinel.touch()
     _patch_pyocd_nrf54lm20a_flash_algo(python_env_path)
+
+    for module in _get_data().zephyr_modules.values():
+        _install_zephyr_module(module)
 
     _install_toolchain()
 
