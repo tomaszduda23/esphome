@@ -3,7 +3,11 @@ import random
 
 import esphome.codegen as cg
 from esphome.components.const import CONF_MANUFACTURER
-from esphome.components.nrf52.const import VARIANT_NRF54L15, VARIANT_NRF54LM20
+from esphome.components.nrf52.const import (
+    VARIANT_NRF54L15,
+    VARIANT_NRF54LM20,
+    VARIANTS_NRF54L,
+)
 from esphome.components.nrf52.framework import (
     ZephyrModule,
     get_nrf52_variant,
@@ -95,27 +99,30 @@ def _add_on_commit() -> str | None:
 def final_validate_zephyr(config: ConfigType) -> ConfigType:
     version = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
     variant = get_nrf52_variant()
-    supported = ", ".join(NCS_ZIGBEE_COMMITS)
-    if not _uses_add_on():
-        if variant in _ADD_ON_PARTITIONS:
+    if variant in VARIANTS_NRF54L:
+        # sdk-nrf before the oldest add-on release has no Zigbee for nRF54L
+        oldest = min(NCS_ZIGBEE_COMMITS, key=cv.Version.parse)
+        if version < cv.Version.parse(oldest):
             raise cv.Invalid(
-                f"Zigbee on {variant} needs sdk-nrf {supported}; set "
-                f"'version: {max(NCS_ZIGBEE_COMMITS, key=cv.Version.parse)}' "
-                "under 'framework:' of nrf52"
+                f"Zigbee on {variant} needs sdk-nrf {oldest} or newer, but the "
+                f"framework is {version}; set 'version: "
+                f"{max(NCS_ZIGBEE_COMMITS, key=cv.Version.parse)}' under "
+                "'framework:' of nrf52"
             )
-        return config
-    if variant not in _ADD_ON_PARTITIONS:
+    elif _uses_add_on():
         raise cv.Invalid(
             f"Zigbee on {variant} needs sdk-nrf 2.9.2 or older, not {version}"
         )
+    if not _uses_add_on():
+        return config
     if CORE.using_toolchain_platformio:
         raise cv.Invalid(
             f"Zigbee on sdk-nrf {version} needs 'toolchain: sdk-nrf' under nrf52"
         )
     if _add_on_commit() is None:
         raise cv.Invalid(
-            f"Zigbee is not available for sdk-nrf {version}. Supported versions: "
-            f"{supported}"
+            f"Zigbee is not available for sdk-nrf {version} yet. Supported "
+            f"versions: {', '.join(NCS_ZIGBEE_COMMITS)}"
         )
     # The Zigbee flash layout leaves no room for MCUboot and a second image slot
     if any(

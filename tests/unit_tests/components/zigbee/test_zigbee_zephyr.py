@@ -57,8 +57,17 @@ def test_supported(variant: str, version: str) -> None:
             VARIANT_NRF54L15,
             "2.9.2",
             Toolchain.SDK_NRF,
-            "Zigbee on NRF54L15 needs sdk-nrf 3.4.0, 3.4.1, 3.4.2; set 'version: 3.4.2'",
+            "Zigbee on NRF54L15 needs sdk-nrf 3.4.0 or newer, but the framework is "
+            "2.9.2; set 'version: 3.4.2'",
             id="nrf54l_on_sdk_2",
+        ),
+        pytest.param(
+            VARIANT_NRF54L15,
+            "3.3.0",
+            Toolchain.SDK_NRF,
+            "Zigbee on NRF54L15 needs sdk-nrf 3.4.0 or newer, but the framework is "
+            "3.3.0",
+            id="nrf54l_on_sdk_3_without_add_on",
         ),
         pytest.param(
             VARIANT_NRF52840,
@@ -76,10 +85,10 @@ def test_supported(variant: str, version: str) -> None:
         ),
         pytest.param(
             VARIANT_NRF54L15,
-            "3.3.0",
+            "3.5.0",
             Toolchain.SDK_NRF,
-            "Zigbee is not available for sdk-nrf 3.3.0",
-            id="no_add_on_release",
+            "Zigbee is not available for sdk-nrf 3.5.0 yet",
+            id="newer_than_the_add_on_releases",
         ),
     ],
 )
