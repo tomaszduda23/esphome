@@ -307,7 +307,11 @@ _PRE_SCHEMA = cv.Schema(
 
 
 def _validate_shape(config: ConfigType) -> ConfigType:
-    """Check the keys read by the validators that run before the schema."""
+    """Check the keys read by the validators that run before the schema.
+
+    A function, not a bare schema in CONFIG_SCHEMA, so schema extraction does not pick up
+    these keys a second time.
+    """
     return _PRE_SCHEMA(config)
 
 
