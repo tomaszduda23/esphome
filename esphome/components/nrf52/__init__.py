@@ -297,6 +297,18 @@ BOOTLOADERS = [*SERIAL_DFU_BOOTLOADERS, BOOTLOADER_MCUBOOT]
 
 
 _validate_toolchain = cv.toolchain_enum(_TOOLCHAINS)
+_PRE_SCHEMA = cv.Schema(
+    {
+        cv.Optional(CONF_BOARD): cv.string_strict,
+        cv.Optional(KEY_BOOTLOADER): cv.one_of(*BOOTLOADERS, lower=True),
+    },
+    extra=cv.ALLOW_EXTRA,
+)
+
+
+def _validate_shape(config: ConfigType) -> ConfigType:
+    """Check the keys read by the validators that run before the schema."""
+    return _PRE_SCHEMA(config)
 
 
 def _resolve_board_alias(config: ConfigType) -> ConfigType:
@@ -381,6 +393,7 @@ def _dfu_schema(value: bool | ConfigType) -> ConfigType:
 
 
 CONFIG_SCHEMA = cv.All(
+    _validate_shape,
     _resolve_board_alias,
     _detect_bootloader,
     set_core_data,
