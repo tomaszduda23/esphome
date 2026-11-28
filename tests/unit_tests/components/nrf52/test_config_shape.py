@@ -4,7 +4,8 @@ import pytest
 
 from esphome.components import nrf52
 import esphome.config_validation as cv
-from esphome.const import CONF_BOARD
+from esphome.const import CONF_BOARD, KEY_CORE
+from esphome.core import CORE
 from esphome.types import ConfigType
 
 
@@ -27,6 +28,7 @@ def test_malformed_block_is_invalid(config: ConfigType, match: str) -> None:
         nrf52.CONFIG_SCHEMA(config)
 
 
-def test_bootloader_is_lowered_before_detection() -> None:
-    config = nrf52._validate_shape({CONF_BOARD: "xiao_ble", "bootloader": "Adafruit"})
+def test_mixed_case_bootloader_is_accepted() -> None:
+    CORE.data[KEY_CORE] = {}
+    config = nrf52.CONFIG_SCHEMA({CONF_BOARD: "xiao_ble", "bootloader": "Adafruit"})
     assert config["bootloader"] == "adafruit"
